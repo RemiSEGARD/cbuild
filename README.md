@@ -7,6 +7,7 @@ Currently only compatible with Unix systems.
 
 # How to use
 
+See [examples](./examples/)
 
 ```
 cc -o cbuild cbuild.c
