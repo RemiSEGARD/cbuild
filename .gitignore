@@ -1,0 +1,8 @@
+# LSP Stuff
+compile_commands.json
+.cache
+
+# Build stuff
+*.o
+*.old
+cbuild
