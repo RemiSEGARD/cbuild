@@ -1,9 +1,6 @@
-#define _DEFAULT_SOURCE
-
 #ifndef CBUILD_H
 #define CBUILD_H
 
-#include "sys/cdefs.h"
 #include <stdarg.h>
 #include <stddef.h>
 
@@ -121,20 +118,32 @@ typedef struct {
         CBUILD_FILE_SOURCE, ///< if the source is a file
         CBUILD_TARGET_SOURCE, ///< if the source is an other target
     } source_type; ///< the type of source for the target
+    int add_to_command;
 } cbuild_source;
 
 /**
  * @def CBUILD_MAKE_FILE_SOURCE(FILENAME)
  * @brief creates a cbuild_source using the file type
  */
-#define CBUILD_MAKE_FILE_SOURCE(FILENAME) \
-    { .source.file = FILENAME, .source_type= CBUILD_FILE_SOURCE }
+#define CBUILD_MAKE_FILE_SOURCE(FILENAME)                                      \
+    {                                                                          \
+        .source.file = FILENAME, .source_type = CBUILD_FILE_SOURCE,            \
+        .add_to_command = 1                                                    \
+    }
+#define CBUILD_MAKE_FILE_HEADER(FILENAME)                                      \
+    {                                                                          \
+        .source.file = FILENAME, .source_type = CBUILD_FILE_SOURCE,            \
+        .add_to_command = 0                                                    \
+    }
 /**
  * @def CBUILD_MAKE_TARGET_SOURCE(FILENAME)
  * @brief creates a cbuild_source using the target type
  */
-#define CBUILD_MAKE_TARGET_SOURCE(FILENAME) \
-    { .source.target = FILENAME, .source_type= CBUILD_TARGET_SOURCE }
+#define CBUILD_MAKE_TARGET_SOURCE(TARGET)                                      \
+    {                                                                          \
+        .source.target = FILENAME, .source_type = CBUILD_TARGET_SOURCE,        \
+        .add_to_command = 1                                                    \
+    }
 
 /**
  * @brief structure to represent a target that can be built
@@ -168,10 +177,13 @@ typedef struct cbuild_target {
         }                                                                      \
     }
 
+int cbuild_target_is_older_than_source(const char *target, const char *source);
+
 /**
  * @brief builds a target
  */
-int cbuild_build_target(cbuild_target *target, int *built);
+int cbuild_build_target(cbuild_target *target, int *built,
+        int always_recompile);
 
 /**
  * @brief different levels of logging
@@ -258,7 +270,7 @@ int __cbuild_command_rebuild_yourself(int argc, char *argv[]);
 #include <sys/wait.h>
 #include <sys/stat.h>
 
-#define __COUNT_VAARGS(a, b, c, d, e, f, g, h, i, j, k, ...) k
+#define __COUNT_VAARGS(a, b, c, d, e, f, g, h, i, j, k, l, m, ...) m
 #define COUNT_VAARGS(...) \
     __COUNT_VAARGS(__VA_ARGS__, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 
@@ -422,9 +434,9 @@ int cbuild_command_exec_sync(cbuild_command *command)
     return pid_wait(pid);
 }
 
-int cbuild_build_target(cbuild_target *target, int *built)
+int cbuild_build_target(cbuild_target *target, int *built, int always_recompile)
 {
-    int build_needed = 0;
+    int build_needed = always_recompile;
     int local_built = 0;
     if (built == NULL)
         built = &local_built;
@@ -433,8 +445,8 @@ int cbuild_build_target(cbuild_target *target, int *built)
     {
         if (target->sources[i].source_type == CBUILD_TARGET_SOURCE)
         {
-            if (cbuild_build_target(target->sources[i].source.target, built)
-                    != 0)
+            if (cbuild_build_target(target->sources[i].source.target, built,
+                                    always_recompile) != 0)
                 return 1;
             build_needed |= *built;
         }
@@ -452,12 +464,13 @@ int cbuild_build_target(cbuild_target *target, int *built)
             cbuild_command_add_arg(&build_command, target->command.strs[i]);
         }
         cbuild_command_add_args(&build_command, "-o", target->target_file);
-        for (size_t i = 0; i < target ->nb_sources; i++)
+        for (size_t i = 0; i < target->nb_sources; i++)
         {
-            cbuild_command_add_arg(&build_command,
-                target->sources[i].source_type == CBUILD_FILE_SOURCE
-                        ? target->sources[i].source.file
-                        : target->sources[i].source.target->target_file);
+            if (target->sources[i].add_to_command)
+                cbuild_command_add_arg(&build_command,
+                    target->sources[i].source_type == CBUILD_FILE_SOURCE
+                            ? target->sources[i].source.file
+                            : target->sources[i].source.target->target_file);
         }
         *built = 1;
         return cbuild_command_exec_sync(&build_command);

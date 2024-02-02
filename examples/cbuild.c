@@ -1,4 +1,4 @@
-#define CBUILD_IMPLEMETATION
+#define CBUILD_IMPLEMENTATION
 #include "../cbuild.h"
 
 int main(int argc, char *argv[])
@@ -6,6 +6,7 @@ int main(int argc, char *argv[])
     CBUILD_REBUILD_YOURSELF(argc, argv);
 
     static cbuild_target toto_o = CBUILD_TARGET("toto.o",
+            CBUILD_MAKE_FILE_HEADER("toto.h"),
             CBUILD_MAKE_FILE_SOURCE("toto.c"));
 
     cbuild_str_vector_add_strs(&toto_o.command, "cc", "-Wall", "-Werror", "-c");
@@ -15,7 +16,7 @@ int main(int argc, char *argv[])
 
     cbuild_str_vector_add_strs(&toto.command, "cc", "-Wall", "-Werror");
 
-    if (cbuild_build_target(&toto, NULL))
+    if (cbuild_build_target(&toto, NULL, 0))
     {
         cbuild_log(CBUILD_ERROR, "Could not build target %s", toto.target_file);
         return 1;
