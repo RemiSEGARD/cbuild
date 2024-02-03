@@ -1,9 +1,16 @@
 #define CBUILD_IMPLEMENTATION
 #include "../cbuild.h"
 
+
+
 int main(int argc, char *argv[])
 {
     CBUILD_REBUILD_YOURSELF(argc, argv);
+
+#if CBUILD_BOOTSTRAP == 1
+
+    cargparse_setup_args("./cbuild [OPTIONS...]");
+    cargparse_parse_args(&argc, &argv);
 
     static cbuild_target toto_o = CBUILD_TARGET("toto.o",
             CBUILD_MAKE_FILE_HEADER("toto.h"),
@@ -24,4 +31,6 @@ int main(int argc, char *argv[])
     cbuild_command exec_toto = { 0 };
     cbuild_command_add_arg(&exec_toto, "./toto");
     return cbuild_command_exec_sync(&exec_toto);
+#endif /* CBUILD_BOOTSTRAP == 1*/
 }
+
