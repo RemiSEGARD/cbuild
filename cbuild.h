@@ -187,6 +187,8 @@ int cbuild_file_exists(const char *file);
 int cbuild_build_target(cbuild_target *target, int *built,
         int always_recompile);
 
+int cbuild_clean_target(cbuild_target *target);
+
 /**
  * @brief different levels of logging
  */
@@ -416,6 +418,18 @@ int cbuild_command_exec_sync(cbuild_command *command)
     if (pid == -1)
         return -1;
     return pid_wait(pid);
+}
+
+int cbuild_clean_target(cbuild_target *target)
+{
+    remove(target->target_file);
+    for (size_t i = 0; i < target->sources[i].source_type; i++)
+    {
+        if (target->sources[i].source_type == CBUILD_TARGET_SOURCE)
+        {
+            cbuild_clean_target(target->sources[i].source.target);
+        }
+    }
 }
 
 int cbuild_build_target(cbuild_target *target, int *built, int always_recompile)

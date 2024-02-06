@@ -1,6 +1,8 @@
 #define CBUILD_IMPLEMENTATION
 #include "../../cbuild.h"
 
+#include <string.h>
+
 int main(int argc, char *argv[])
 {
     CBUILD_REBUILD_YOURSELF(argc, argv);
@@ -16,7 +18,11 @@ int main(int argc, char *argv[])
 
     cbuild_str_vector_add_strs(&toto.command, "cc", "-Wall", "-Werror");
 
-    if (cbuild_build_target(&toto, NULL, 0))
+    if (strcmp("--clean", argv[1]) == 0)
+    {
+        cbuild_clean_target(&toto);
+    }
+    else if (cbuild_build_target(&toto, NULL, 0))
     {
         cbuild_log(CBUILD_ERROR, "Could not build target %s", toto.target_file);
         return 1;
