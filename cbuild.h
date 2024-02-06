@@ -496,7 +496,9 @@ int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
                           "number of process that can run simultaneously");
     cbuild_write_argument("always_compile", "bool", "false", "B",
                           "recompile every targets");
+#ifdef CBUILD_CUSTOM_ARGS
     CBUILD_CUSTOM_ARGS;
+#endif /* CBUILD_CUSTOM_ARGS */
 
     return 0;
 }
