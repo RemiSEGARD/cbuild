@@ -179,6 +179,8 @@ typedef struct cbuild_target {
 
 int cbuild_target_is_older_than_source(const char *target, const char *source);
 
+int cbuild_file_exists(const char *file);
+
 /**
  * @brief builds a target
  */
@@ -216,6 +218,7 @@ int cbuild_write_argument(char *name, char *type, char* default_value, char
 int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
         cbuild_command *build_command);
 
+int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target);
 /**
  * @brief macro used to make cbuild rebuild itself if necessary
  * @details cbuild will try to detect if its sources have been modified more
@@ -223,52 +226,10 @@ int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
  *          inspired from tsoding's nob
  */
 #define CBUILD_REBUILD_YOURSELF(ARGC, ARGV)                                    \
-    do                                                                         \
-    {                                                                          \
-        char *cbuild_source = __FILE__;                                        \
-        char *cbuild_target = argv[0];                                         \
-        if (!cbuild_target_is_older_than_source(cbuild_target, cbuild_source)  \
-            && !cbuild_target_is_older_than_source(cbuild_target,              \
-                                                   cbuild_header_file_name) && \
-                cbuild_bootstrap_step != 0) \
-        {                                                                      \
-            break;                                                             \
-        }                                                                      \
-                                                                               \
-        cbuild_str_builder str_builder_old = { 0 };                            \
-        cbuild_str_builder_append_cstr(&str_builder_old, cbuild_target);       \
-        cbuild_str_builder_append_cstr(&str_builder_old, ".old");              \
-        char *rename_cbuild_to = cbuild_str_builder_to_cstr(&str_builder_old); \
-        if (cbuild_rename(cbuild_target, rename_cbuild_to))                    \
-            return 1;                                                          \
-                                                                               \
-        cbuild_command build_command = { 0 };                                  \
-        cbuild_command_add_args(&build_command, "cc");                         \
-        cbuild_command_add_args(&build_command, "-o", cbuild_target,           \
-                cbuild_source);                                                \
-                                                                               \
-        if (cbuild_bootstrap_step == 0)                                        \
-            cbuild_bootstrap_first_step(cbuild_source, cbuild_target,          \
-                    &build_command);                                           \
-                                                                               \
-        if (cbuild_command_exec_sync(&build_command))                          \
-        {                                                                      \
-            cbuild_log(CBUILD_ERROR, "Could not rebuild cbuild");              \
-            if (cbuild_rename(rename_cbuild_to, cbuild_target))                \
-            {                                                                  \
-                cbuild_log(CBUILD_ERROR, "Could not restore %s",               \
-                           cbuild_target);                                     \
-            }                                                                  \
-            return 1;                                                          \
-        }                                                                      \
-                                                                               \
-        free(rename_cbuild_to);                                                \
-                                                                               \
-        cbuild_command run_command = { 0 };                                    \
-        cbuild_command_add_arg(&run_command, argv[0]);                         \
-        exit(cbuild_command_exec_sync(&run_command));                          \
-    } while (0);
-
+    do { \
+        if (__cbuild_rebuild_yourself(__FILE__, argv[0])) \
+            return 1;\
+    } while (0)
 
 #ifdef CBUILD_IMPLEMENTATION
 
@@ -308,6 +269,11 @@ int cbuild_target_is_older_than_source(const char *target, const char *source)
     return source_st.tv_sec == target_st.tv_sec
                ? source_st.tv_nsec > target_st.tv_nsec
                : source_st.tv_sec > target_st.tv_sec;
+}
+
+int cbuild_file_exists(const char *file)
+{
+    return access(file, R_OK) == 0;
 }
 
 int cbuild_rename(char *source, char *target)
@@ -511,30 +477,26 @@ int cbuild_write_argument(char *name, char *type, char *default_value,
 int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
         cbuild_command *build_command)
 {
+    if (!cbuild_file_exists("cargparse.h"))
+        return 0;
+
     cbuild_log(CBUILD_INFO, "Initiating bootstrapping step number %d",
             cbuild_bootstrap_step);
-
-    // TODO: download cargparse.h
-    cbuild_command cp = { 0 };
-    cbuild_command_add_args(&cp, "cp", "../../cargparse/cargparse.h", ".");
-    if (cbuild_command_exec_sync(&cp))
-    {
-        cbuild_log(CBUILD_ERROR, "Could not copy cargparse.h");
-        return 1;
-    }
 
     char *bootstrap_macro = calloc(50, sizeof(char));
     sprintf(bootstrap_macro, "-DCBUILD_BOOTSTRAP=%d", cbuild_bootstrap_step + 1);
 
-    cbuild_command_add_args(build_command, bootstrap_macro);
+    cbuild_command_add_args(build_command, bootstrap_macro,
+            "-DCBUILD_ENABLE_CARGPARSE");
 
     remove("cargparse.h.in");
     cbuild_write_argument("clean", "bool", "false", "clean",
                           "clean all generated files");
     cbuild_write_argument("nb_process", "int", "1", "j",
                           "number of process that can run simultaneously");
-    cbuild_write_argument("always_compile", "bool", "true", "B",
+    cbuild_write_argument("always_compile", "bool", "false", "B",
                           "recompile every targets");
+    CBUILD_CUSTOM_ARGS;
 
     return 0;
 }
@@ -559,13 +521,72 @@ void cbuild_log(enum cbuild_log_level log_level, char *format, ...)
   printf("\n");
 }
 
-#if CBUILD_BOOTSTRAP >= 1
+int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target)
+{
+#ifndef CBUILD_ENABLE_CARGPARSE
+    if (!cbuild_file_exists("cargparse.h"))
+#endif
+    if (!cbuild_target_is_older_than_source(cbuild_target, cbuild_source)
+        && !cbuild_target_is_older_than_source(cbuild_target,
+                                               cbuild_header_file_name))
+    {
+        return 0;
+    }
+
+    cbuild_str_builder str_builder_old = { 0 };
+    cbuild_str_builder_append_cstr(&str_builder_old, cbuild_target);
+    cbuild_str_builder_append_cstr(&str_builder_old, ".old");
+    char *rename_cbuild_to = cbuild_str_builder_to_cstr(&str_builder_old);
+    if (cbuild_rename(cbuild_target, rename_cbuild_to))
+        return 1;
+
+    cbuild_command build_command = { 0 };
+    cbuild_command_add_args(&build_command, "cc");
+    cbuild_command_add_args(&build_command, "-o", cbuild_target,
+            cbuild_source);
+
+#ifndef CBUILD_BOOTSTRAP
+    cbuild_bootstrap_first_step(cbuild_source, cbuild_target,
+            &build_command);
+#elif CBUILD_BOOTSTRAP >= 1
+    char bootstrap_macro[50] = { 0 };
+    sprintf(bootstrap_macro, "-DCBUILD_BOOTSTRAP=%d", cbuild_bootstrap_step);
+    cbuild_command_add_args(&build_command, bootstrap_macro);
+#endif /* CBUILD_ENABLE_CARGPARSE */
+
+#ifdef CBUILD_ENABLE_CARGPARSE
+    cbuild_command_add_args(&build_command, "-DCBUILD_ENABLE_CARGPARSE");
+#endif /* CBUILD_ENABLE_CARGPARSE */
+
+    if (cbuild_command_exec_sync(&build_command))
+    {
+        cbuild_log(CBUILD_ERROR, "Could not rebuild cbuild");
+        if (cbuild_rename(rename_cbuild_to, cbuild_target))
+        {
+            cbuild_log(CBUILD_ERROR, "Could not restore %s",
+                       cbuild_target);
+        }
+        return 1;
+    }
+
+    free(rename_cbuild_to);
+
+    cbuild_command run_command = { 0 };
+    cbuild_command_add_arg(&run_command, cbuild_target);
+    exit(cbuild_command_exec_sync(&run_command));
+}
+
+#if CBUILD_ENABLE_CARGPARSE
 
 #define CARGPARSE_IMPLEMENTATION
 #define CARG_LOCATION "cargparse.h.in"
-#include "examples/cargparse.h"
 
-#endif /* CBUILD_BOOTSTRAP >= 1*/
+#ifndef CARGPARSE_HEADER
+#  define CARPARSE_HEADER "cargparse.h"
+#endif
+#include CARGPARSE_HEADER
+
+#endif /* CBUILD_ENABLE_CARGPARSE */
 
 #endif /* ! CBUILD_IMPLEMENTATION */
 #endif /* ! CBUILD_H */

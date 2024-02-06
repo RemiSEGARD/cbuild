@@ -1,14 +1,18 @@
 #define CBUILD_IMPLEMENTATION
-#include "../cbuild.h"
+#define CARGPARSE_HEADER "examples/with_cargparse/cargparse.h"
 
+#define CBUILD_CUSTOM_ARGS \
+    do \
+        cbuild_write_argument("run_toto", "bool", "false", "toto", "should toto be run at the end?");\
+    while (0)
 
+#include "../../cbuild.h"
 
 int main(int argc, char *argv[])
 {
     CBUILD_REBUILD_YOURSELF(argc, argv);
 
 #if CBUILD_BOOTSTRAP == 1
-
     cargparse_setup_args("./cbuild [OPTIONS...]");
     cargparse_parse_args(&argc, &argv);
 
@@ -28,9 +32,14 @@ int main(int argc, char *argv[])
         cbuild_log(CBUILD_ERROR, "Could not build target %s", toto.target_file);
         return 1;
     }
-    cbuild_command exec_toto = { 0 };
-    cbuild_command_add_arg(&exec_toto, "./toto");
-    return cbuild_command_exec_sync(&exec_toto);
-#endif /* CBUILD_BOOTSTRAP == 1*/
+
+    if (run_toto)
+    {
+        cbuild_command exec_toto = { 0 };
+        cbuild_command_add_arg(&exec_toto, "./toto");
+        return cbuild_command_exec_sync(&exec_toto);
+    }
+#endif /* CBUILD_BOOTSTRAP == 1 */
+    return 0;
 }
 
