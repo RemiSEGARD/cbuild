@@ -27,10 +27,20 @@ int main(int argc, char *argv[])
 
     cbuild_str_vector_add_strs(&toto.command, "cc", "-Wall", "-Werror");
 
-    if (cbuild_build_target(&toto, NULL, 0))
+    int rebuilt = 0;
+    if (clean)
+    {
+        cbuild_clean_target(&toto);
+        return 0;
+    }
+    if (cbuild_build_target(&toto, &rebuilt, always_compile))
     {
         cbuild_log(CBUILD_ERROR, "Could not build target %s", toto.target_file);
         return 1;
+    }
+    if (!rebuilt)
+    {
+        cbuild_log(CBUILD_INFO, "No need to rebuild `%s'", toto.target_file);
     }
 
     if (run_toto)
