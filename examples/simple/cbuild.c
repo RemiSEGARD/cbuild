@@ -18,9 +18,10 @@ int main(int argc, char *argv[])
 
     cbuild_str_vector_add_strs(&toto.command, "cc", "-Wall", "-Werror");
 
-    if (strcmp("--clean", argv[1]) == 0)
+    if (argc > 1 && strcmp("--clean", argv[1]) == 0)
     {
         cbuild_clean_target(&toto);
+        return 0;
     }
     else if (cbuild_build_target(&toto, NULL, 0))
     {

@@ -422,7 +422,11 @@ int cbuild_command_exec_sync(cbuild_command *command)
 
 int cbuild_clean_target(cbuild_target *target)
 {
-    remove(target->target_file);
+    if (cbuild_file_exists(target->target_file))
+    {
+        cbuild_log(CBUILD_WARN, "Removing `%s'", target->target_file);
+        remove(target->target_file);
+    }
     for (size_t i = 0; i < target->sources[i].source_type; i++)
     {
         if (target->sources[i].source_type == CBUILD_TARGET_SOURCE)
