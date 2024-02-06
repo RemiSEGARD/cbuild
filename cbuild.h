@@ -218,7 +218,7 @@ int cbuild_write_argument(char *name, char *type, char* default_value, char
 int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
         cbuild_command *build_command);
 
-int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target);
+int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target, char *argv[]);
 /**
  * @brief macro used to make cbuild rebuild itself if necessary
  * @details cbuild will try to detect if its sources have been modified more
@@ -227,7 +227,7 @@ int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target);
  */
 #define CBUILD_REBUILD_YOURSELF(ARGC, ARGV)                                    \
     do { \
-        if (__cbuild_rebuild_yourself(__FILE__, argv[0])) \
+        if (__cbuild_rebuild_yourself(__FILE__, argv[0], argv)) \
             return 1;\
     } while (0)
 
@@ -523,7 +523,7 @@ void cbuild_log(enum cbuild_log_level log_level, char *format, ...)
   printf("\n");
 }
 
-int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target)
+int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target, char *argv[])
 {
 #ifndef CBUILD_ENABLE_CARGPARSE
     if (!cbuild_file_exists("cargparse.h"))
@@ -575,6 +575,8 @@ int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target)
 
     cbuild_command run_command = { 0 };
     cbuild_command_add_arg(&run_command, cbuild_target);
+    for (size_t i = 1; argv[i] != NULL; i++)
+        cbuild_command_add_arg(&run_command, argv[i]);
     exit(cbuild_command_exec_sync(&run_command));
 }
 
