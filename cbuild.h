@@ -427,7 +427,7 @@ int cbuild_clean_target(cbuild_target *target)
         cbuild_log(CBUILD_WARN, "Removing `%s'", target->target_file);
         remove(target->target_file);
     }
-    for (size_t i = 0; i < target->sources[i].source_type; i++)
+    for (size_t i = 0; target->sources[i].source_type; i++)
     {
         if (target->sources[i].source_type == CBUILD_TARGET_SOURCE)
         {
@@ -443,7 +443,7 @@ int cbuild_build_target(cbuild_target *target, int *built, int always_recompile)
     if (built == NULL)
         built = &local_built;
 
-    for (size_t i = 0; i < target->sources[i].source_type; i++)
+    for (size_t i = 0; target->sources[i].source_type; i++)
     {
         if (target->sources[i].source_type == CBUILD_TARGET_SOURCE)
         {
@@ -604,7 +604,7 @@ int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target, char *ar
 #define CARG_LOCATION "cargparse.h.in"
 
 #ifndef CARGPARSE_HEADER
-#  define CARPARSE_HEADER "cargparse.h"
+#  define CARGPARSE_HEADER "cargparse.h"
 #endif
 #include CARGPARSE_HEADER
 
