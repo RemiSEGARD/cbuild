@@ -17,12 +17,12 @@ int main(int argc, char *argv[])
     cargparse_parse_args(&argc, &argv);
 
     static cbuild_target toto_o = CBUILD_TARGET("toto.o",
+            "cc -Wall -Werror -c -o %t %s",
             CBUILD_MAKE_FILE_HEADER("toto.h"),
             CBUILD_MAKE_FILE_SOURCE("toto.c"));
 
-    cbuild_str_vector_add_strs(&toto_o.command, "cc", "-Wall", "-Werror", "-c");
-
     static cbuild_target toto = CBUILD_TARGET("toto",
+            "cc -o %t %s",
             CBUILD_MAKE_TARGET_SOURCE(&toto_o));
 
     cbuild_str_vector_add_strs(&toto.command, "cc", "-Wall", "-Werror");
