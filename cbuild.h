@@ -1,6 +1,7 @@
 #ifndef CBUILD_H
 #define CBUILD_H
 
+#include <time.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <sys/wait.h>
@@ -157,6 +158,16 @@ typedef struct cbuild_target {
     cbuild_source sources[]; ///< sources required by the target
 } cbuild_target;
 
+/**
+ * @brief builds a command from the format of a target
+ *
+ * @details here are the available formats:
+ *          %s: all the sources
+ *          %t: the target file
+ *          %a: all the custom arguments (you must use this if you want to have
+ *              arguments with spaces)
+ * //TODO: %s[n] and %a[n] to specify the number of the source or argument
+ */
 cbuild_command cbuild_target_build_command(cbuild_target *target);
 
 /**
@@ -177,53 +188,129 @@ cbuild_command cbuild_target_build_command(cbuild_target *target);
         .target_file = FILENAME,                                               \
         .command_format = FORMAT,                                              \
         .sources = {                                                           \
-            __VA_ARGS__,                                                       \
-            { .source_type = CBUILD_NONE }           \
+            __VA_ARGS__ __VA_OPT__(,)                                          \
+            { .source_type = CBUILD_NONE }                                     \
         }                                                                      \
     }
 
+/**
+ * @brief returns true if the source file has had more recent modifications that
+ * the target file
+ *
+ * @param target the target file
+ * @param source the source file
+ */
 int cbuild_target_is_older_than_source(const char *target, const char *source);
 
+/**
+ * @brief checks if a file exists
+ *
+ * @param file the file
+ */
 int cbuild_file_exists(const char *file);
 
 /**
- * @brief builds a target
+ * @brief builds a target synchronously
+ *
+ * @param target the target to build
+ * @param build pointer to an int, set to true if the target or any dependency
+ *        has been built
+ * @param always_recompile if set to != 0, the target and its dependencies will
+ *        always be rebuilt
  */
 int cbuild_build_target(cbuild_target *target, int *built,
         int always_recompile);
+
+/**
+ * @brief builds a target using multiple processes
+ *
+ * @param target the target to build
+ * @param build pointer to an int, set to true if the target or any dependency
+ *        has been built
+ * @param always_recompile if set to != 0, the target and its dependencies will
+ *        always be rebuilt
+ * @param nb_process the maximum number of processes that can run simultaneously
+ */
 int cbuild_multiprocess_build_target(cbuild_target *target, int *built,
         int always_recompile, unsigned nb_process);
+
+/**
+ * @brief removes the target all the files it depends on
+ *
+ * @param target the target to clean
+ */
 int cbuild_clean_target(cbuild_target *target);
 
+/**
+ * @brief stack item containing a target
+ */
 typedef struct cbuild_target_stack_item
 {
     cbuild_target *target;
     struct cbuild_target_stack_item *next;
 } cbuild_target_stack_item;
 
+/**
+ * @brief stack of targets, used to build a target using multiple processes. The
+ * process at the top will have the most priority if it can be built.
+ */
 typedef struct
 {
     cbuild_target_stack_item *head;
 } cbuild_target_stack;
 
+/**
+ * @brief pushes a target on a target stack
+ *
+ * @param sk the stack
+ * @param target the target
+ */
 void cbuild_target_stack_push(cbuild_target_stack *sk, cbuild_target *target);
 
+/**
+ * @brief stack item containing a target and its associated building process pid
+ */
 typedef struct
 {
-    pid_t pid;
-    cbuild_target *target;
+    pid_t pid; ///< pid of the process building the target
+    cbuild_target *target; ///< the target
 } cbuild_target_map_item;
 
 typedef struct
 {
-    cbuild_target_map_item *items;
-    size_t size;
-    size_t capacity;
+    cbuild_target_map_item *items; ///< array of items
+    size_t size; ///< number of elements in the map
+    size_t capacity; ///< maximum number of element in the map
 } cbuild_target_map;
 
+/**
+ * @brief initializes a target map
+ *
+ * @param map pointer to the map to initialize
+ * @param capacity maximum number of element in the map
+ */
 void cbuild_target_map_init(cbuild_target_map *map, size_t capacity);
+/**
+ * @brief inserts a target in map with its associated pid
+ *
+ * @param map pointer to the map to initialize
+ * @param pid pid of the process building the target
+ * @param target the target being built
+ */
 void cbuild_target_map_insert(cbuild_target_map *map, pid_t pid, cbuild_target *target);
+/**
+ * @brief removes an item from a map
+ *
+ * @param map the map
+ * @param pid the pid of the item to remove
+ */
 void cbuild_target_map_remove(cbuild_target_map *map, pid_t pid);
+/**
+ * @brief returns a target associated to a pid
+ *
+ * @param map the map
+ * @param pid the pid associated to the target
+ */
 cbuild_target *cbuild_target_map_get(cbuild_target_map *map, pid_t pid);
 
 /**
@@ -252,10 +339,27 @@ extern const char *cbuild_header_file_name;
 
 extern unsigned cbuild_bootstrap_step;
 
+/**
+ * @brief adds an argument to the cargparse.h.in file
+ *
+ * @param name name of the created variable
+ * @param type type of the created variable
+ * @param default_value default_value of the argument
+ * @param args list of all the ways to call the argument from cli
+ * @param desc description of the argument
+ */
 int cbuild_write_argument(char *name, char *type, char* default_value, char
         *args, char *desc);
-int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
-        cbuild_command *build_command);
+
+/**
+ * @brief setups the first part of the bootstrapping of cbuild when cargparse.h
+ *        exists
+ *
+ * @param cbuild_source the cbuild file source
+ * @param cbuild_target the cbuild file target
+ * @param build_command the command to build cbuild
+ */
+int cbuild_bootstrap_first_step(cbuild_command *build_command);
 
 int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target, char *argv[]);
 /**
@@ -318,14 +422,12 @@ int cbuild_target_is_older_than_source(const char *target, const char *source)
     if (stat(source, &st) == -1)
         // TODO PANIC
         return 0;
-    struct timespec source_st = st.st_mtim;
+    unsigned long source_time = st.st_mtime;
 
     if (stat(target, &st) == -1)
         return 1;
-    struct timespec target_st = st.st_mtim;
-    return source_st.tv_sec == target_st.tv_sec
-               ? source_st.tv_nsec > target_st.tv_nsec
-               : source_st.tv_sec > target_st.tv_sec;
+    unsigned long target_time = st.st_mtime;
+    return source_time > target_time;
 }
 
 int cbuild_file_exists(const char *file)
@@ -495,6 +597,7 @@ cbuild_command cbuild_target_build_command(cbuild_target *target)
                     for (size_t i = 0; target->command.size; i++)
                         cbuild_command_add_arg(&command, target->command.strs[i]);
                     format += 1;
+                    break;
                 case 's':
                     if (sb.size != 0)
                         cbuild_command_add_arg(&command, cbuild_str_builder_to_cstr(&sb));
@@ -545,6 +648,7 @@ int cbuild_clean_target(cbuild_target *target)
             cbuild_clean_target(target->sources[i].source.target);
         }
     }
+    return 0;
 }
 
 int cbuild_build_target(cbuild_target *target, int *built, int always_recompile)
@@ -582,7 +686,8 @@ int cbuild_build_target(cbuild_target *target, int *built, int always_recompile)
     return 0;
 }
 
-int cbuild_build_target_async(cbuild_target *target, int always_recompile)
+int cbuild_build_target_async(cbuild_target *target, int *built,
+                              int always_recompile)
 {
     int build_needed = always_recompile;
 
@@ -601,6 +706,7 @@ int cbuild_build_target_async(cbuild_target *target, int always_recompile)
     if (build_needed)
     {
         cbuild_command build_command = cbuild_target_build_command(target);
+        *built = 1;
         return cbuild_command_exec_async(&build_command);
     }
     target->is_built = 1;
@@ -723,7 +829,8 @@ int cbuild_multiprocess_build_target(cbuild_target *target, int *built,
             if (to_build == NULL)
                 break;
             // TODO: goto
-            pid_t pid = cbuild_build_target_async(to_build, always_recompile);
+            pid_t pid = cbuild_build_target_async(to_build, built,
+                                                  always_recompile);
             if (pid == -1)
                 break;
             if (pid == 0)
@@ -750,13 +857,15 @@ int cbuild_write_argument(char *name, char *type, char *default_value,
                           char *args, char *desc)
 {
     FILE *arg_file = fopen("cargparse.h.in", "a");
+    if (arg_file == NULL)
+        return 1;
     fprintf(arg_file, "ARGUMENT(%s, %s, %s, \"%s\", \"%s\")\n", name, type,
             default_value, args, desc);
     fclose(arg_file);
+    return 0;
 }
 
-int cbuild_bootstrap_first_step(char *cbuild_source, char *cbuild_target,
-        cbuild_command *build_command)
+int cbuild_bootstrap_first_step(cbuild_command *build_command)
 {
     if (!cbuild_file_exists("cargparse.h"))
         return 0;
@@ -824,13 +933,13 @@ int __cbuild_rebuild_yourself(char *cbuild_source, char *cbuild_target, char *ar
         return 1;
 
     cbuild_command build_command = { 0 };
-    cbuild_command_add_args(&build_command, "cc");
+    cbuild_command_add_args(&build_command, "cc", "-Wall", "-Wextra",
+            "-std=c99");
     cbuild_command_add_args(&build_command, "-o", cbuild_target,
             cbuild_source);
 
 #ifndef CBUILD_BOOTSTRAP
-    cbuild_bootstrap_first_step(cbuild_source, cbuild_target,
-            &build_command);
+    cbuild_bootstrap_first_step(&build_command);
 #elif CBUILD_BOOTSTRAP >= 1
     char bootstrap_macro[50] = { 0 };
     sprintf(bootstrap_macro, "-DCBUILD_BOOTSTRAP=%d", cbuild_bootstrap_step);
